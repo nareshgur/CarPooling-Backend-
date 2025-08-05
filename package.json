@@ -1,0 +1,19 @@
+{
+  "name": "carpoolingbackendapi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naresh5502/CarPoolingBackendAPI.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/naresh5502/CarPoolingBackendAPI/issues"
+  },
+  "homepage": "https://github.com/naresh5502/CarPoolingBackendAPI#readme"
+}
