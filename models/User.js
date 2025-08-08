@@ -20,33 +20,32 @@ const User = mongoose.model(
       unique: true,
     },
     phone: {
-      type: Number,
+      type: String,
       required: true,
       minlength: 6,
       maxlength: 10,
     },
-    role: {
+    Password: {
       type: String,
-      enum: Object.values(UserRole),
-      default: UserRole.PASSENGER,
+      required: true,
+      minlength: 6,
+      maxlength: 1024,
     },
-    isVerified: {
-      type: Boolean,
-    },
+    // isVerified: {
+    //   type: Boolean,
+    // },
   })
 );
 
 function validateUser(User) {
   const schema = Joi.object({
     name: Joi.string().min(3).max(255).required(),
-    phone: Joi.number().required(),
+    phone: Joi.string().required(),
     email: Joi.string().min(12).max(30).required().email(),
-    role: Joi.string()
-      .valid(...Object.values(UserRole))
-      .required(),
+    Password: Joi.string().min(6).max(1024).required(),
   });
 
-  return Joi.validate(User, schema);
+  return schema.validate(User);
 }
 
 exports.User = User;

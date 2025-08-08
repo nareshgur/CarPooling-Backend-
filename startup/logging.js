@@ -1,5 +1,5 @@
-const winston = require('winston');
-require('express-async-errors');
+const winston = require("winston");
+require("express-async-errors");
 
 module.exports = function () {
   // Proper way to handle exceptions
@@ -8,16 +8,16 @@ module.exports = function () {
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.prettyPrint()
-      )
+      ),
     }),
-    new winston.transports.File({ filename: 'uncaughtExceptions.log' })
+    new winston.transports.File({ filename: "uncaughtExceptions.log" })
   );
 
   // Handle unhandled promise rejections
-  process.on('unhandledRejection', (ex) => {
+  process.on("unhandledRejection", (ex) => {
     throw ex;
   });
 
   // Add file logging transport properly
-  winston.add(new winston.transports.File({ filename: 'logfile.log' }));
+  winston.add(new winston.transports.File({ filename: "logfile.log" }));
 };
