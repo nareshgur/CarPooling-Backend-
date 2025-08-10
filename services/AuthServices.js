@@ -42,5 +42,7 @@ exports.loginUser = async ({ email, Password }) => {
     { _id: user._id, email: user.email },
     process.env.jwtPrivateKey
   );
-  return { status: 200, data: { token } };
+
+
+  return { status: 200, data: token  };
 };

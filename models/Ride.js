@@ -2,7 +2,7 @@ const { required } = require("joi");
 const { trim, truncate } = require("lodash");
 const mongoose = require("mongoose");
 
-const Ride = mongoose.model(
+const Ride = mongoose.model("Ride",
   new mongoose.Schema({
     driverId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -47,4 +47,4 @@ const Ride = mongoose.model(
   })
 );
 
-module.exports = Ride;
+exports.Ride= Ride;
