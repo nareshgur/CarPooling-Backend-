@@ -1,15 +1,15 @@
 const VechileType = Object.freeze({
-  CAR: "Car",
-  BIKE: "Bike",
+  CAR: "car",
+  BIKE: "bike",
 });
 
-const UserRole = Object.freeze({
-  DRIVER: "Driver",
-  PASSENGER: "Passenger",
-  ADMIN: "Admin",
-});
+// const UserRole = Object.freeze({
+//   DRIVER: "Driver",
+//   PASSENGER: "Passenger",
+//   ADMIN: "Admin",
+// });
 
 module.exports = {
-  UserRole,
+  // UserRole,
   VechileType,
 };

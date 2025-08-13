@@ -1,6 +1,6 @@
 const { required } = require("joi");
 const mongoose = require("mongoose");
-const { VechileType } = require("../utils/enums");
+// const { VechileType } = require("../utils/enums");
 
 const Vechile = mongoose.model(
   "Vechile",
@@ -23,11 +23,11 @@ const Vechile = mongoose.model(
       required: true,
       unique: true,
     },
-    VechileType:{
-      type:String,
-      enum:["car","bike"],
-      required:true
-    }
+    VechileType: {
+      type: String,
+      enum: ["car", "bike"],
+      required: true,
+    },
   })
 );
 

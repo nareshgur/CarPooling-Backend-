@@ -3,7 +3,7 @@ const Vechile = require("../models/Vechile");
 exports.createVechile = async (ownerId, vechileData) => {
   const vechile = new Vechile({
     owner: ownerId,
-    ...vechileData
+    ...vechileData,
   });
   await vechile.save();
   return vechile;
@@ -24,7 +24,10 @@ exports.getMyVechiles = async (ownerId) => {
 };
 
 exports.deleteVechile = async (ownerId, vechileId) => {
-  const vechile = await Vechile.findOneAndDelete({ _id: vechileId, owner: ownerId });
+  const vechile = await Vechile.findOneAndDelete({
+    _id: vechileId,
+    owner: ownerId,
+  });
   if (!vechile) {
     throw new Error("Vehicle not found or not owned by user");
   }

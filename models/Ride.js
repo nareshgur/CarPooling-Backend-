@@ -1,50 +1,38 @@
-const { required } = require("joi");
-const { trim, truncate } = require("lodash");
 const mongoose = require("mongoose");
 
-const Ride = mongoose.model("Ride",
-  new mongoose.Schema({
-    driverId: {
-      type: mongoose.Schema.Types.ObjectId,
-      required: true,
-      ref: "User",
+const locationSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true }, // e.g., "Dichpally Bus Stand"
+    location: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number], required: true }, // [lng, lat]
     },
-    origin: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    destination: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    dateTime: {
-      type: Date,
-      required: true,
-    },
-    availableSeats: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
-    pricePerSeat: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    stops: [
-      {
-        type: String,
-        trim: true,
-      },
-    ],
-    vechile: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Vechile",
-      required: true,
-    },
-  })
+  },
+  { _id: false }
 );
 
-exports.Ride= Ride;
+const rideSchema = new mongoose.Schema({
+  driverId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+
+  origin: locationSchema,
+  destination: locationSchema,
+
+  stops: [locationSchema], // Now each stop has coordinates
+
+  dateTime: { type: Date, required: true },
+  availableSeats: { type: Number, required: true },
+  pricePerSeat: { type: Number, required: true },
+
+  vechile: { type: mongoose.Schema.Types.ObjectId, ref: "Vechile" },
+});
+
+// Create geospatial indexes
+rideSchema.index({ "origin.location": "2dsphere" });
+rideSchema.index({ "destination.location": "2dsphere" });
+rideSchema.index({ "stops.location": "2dsphere" });
+
+module.exports = mongoose.model("Ride", rideSchema);

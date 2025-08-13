@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const { union } = require("lodash");
-const { UserRole } = require("../utils/enums");
+// const { UserRole } = require("../utils/enums");
 const Joi = require("joi");
 
 const User = mongoose.model(
