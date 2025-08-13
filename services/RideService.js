@@ -153,15 +153,6 @@ exports.getRidesByDriver = async (driverId) => {
     .sort({ dateTime: -1 }); // latest first
 };
 
-exports.getRidesBookedByUser = async (userId) => {
-  const bookings = await Booking.find({ passengerId: userId }).populate({
-    path: "rideId",
-    populate: { path: "vechile" },
-  });
-  return bookings.map((b) => b.rideId);
-};
-
-// services/RideService.js
 exports.searchRides = async (searchParams) => {
   const {
     lat,
@@ -237,9 +228,66 @@ exports.searchRides = async (searchParams) => {
     query.dateTime = { $gte: start, $lte: end };
   }
 
+  const result = await Ride.find(query);
+  console.log("Query", JSON.parse(JSON.stringify(result)));
   // STEP 5 — Fetch rides with full details
-  const rides = await Ride.find(query).populate("vechile");
+  const rides = await Ride.find(query)
+    .populate("vechile") // Populate vehicle details
+    .populate("driverId", "name email phone rating totalTrips verificationStatus"); // Populate driver details
+
+
+  console.log("Rides", JSON.parse(JSON.stringify(rides)));
   console.log("Date from the frontend", date);
   console.log("Fetching the results between the ", start, end);
-  return rides;
+  
+  // Transform the data to match frontend expectations
+  const transformedRides = rides.map(ride => ({
+    id: ride._id,
+    driverId: ride.driverId,
+    vehicle: {
+      id: ride.vechile._id,
+      type: ride.vechile.type || "car",
+      make: ride.vechile.make || "Unknown",
+      model: ride.vechile.model || "Unknown",
+      year: ride.vechile.year || 2024,
+      color: ride.vechile.color || "Unknown",
+      licensePlate: ride.vechile.licensePlate || "Unknown",
+      features: ride.vechile.features || [],
+    },
+    driver: {
+      id: ride.driverId,
+      name: ride.driverId?.name || "Driver Name",
+      email: ride.driverId?.email || "driver@example.com",
+      phone: ride.driverId?.phone || "+1234567890",
+      rating: ride.driverId?.rating || 4.5,
+      totalTrips: ride.driverId?.totalTrips || 10,
+      verificationStatus: ride.driverId?.verificationStatus || "verified",
+    },
+    from: {
+      id: "loc1",
+      name: ride.origin.name,
+      address: ride.origin.name, // You might want to add address field to your schema
+      coordinates: ride.origin.location.coordinates,
+    },
+    to: {
+      id: "loc2",
+      name: ride.destination.name,
+      address: ride.destination.name, // You might want to add address field to your schema
+      coordinates: ride.destination.location.coordinates,
+    },
+    departureTime: ride.dateTime,
+    arrivalTime: ride.dateTime, // You might want to calculate this based on distance
+    availableSeats: ride.availableSeats,
+    pricePerSeat: ride.pricePerSeat,
+    description: `Ride from ${ride.origin.name} to ${ride.destination.name}`,
+    status: "active",
+    bookings: [],
+    createdAt: ride.dateTime,
+    route: {
+      distance: 0, // You might want to calculate this
+      duration: 0, // You might want to calculate this
+    },
+  }));
+
+  return transformedRides;
 };
