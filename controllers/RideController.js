@@ -5,9 +5,25 @@ const RideService = require("../services/RideService");
 const { error } = require("winston");
 const { route } = require("./AuthController");
 const auth = require("../middleware/auth");
+const { validateSearchParams, getLocationSuggestions, validateLocationName } = require("../utils/locationValidator");
 
 router.post("/Ride", async (req, res) => {
   try {
+    console.log("=== RIDE CREATION REQUEST ===");
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+    
+    // Log origin details
+    if (req.body.origin) {
+      console.log("Origin name:", req.body.origin.name);
+      console.log("Origin coordinates:", req.body.origin.location?.coordinates);
+    }
+    
+    // Log destination details
+    if (req.body.destination) {
+      console.log("Destination name:", req.body.destination.name);
+      console.log("Destination coordinates:", req.body.destination.location?.coordinates);
+    }
+    
     const ride = await RideService.createRide(
       "6898d10af6feb1bb10758dea",
       req.body
@@ -63,19 +79,69 @@ router.get("/search", async (req, res) => {
   try {
     const searchParams = {
       lat: req.query.lat,
-      lon: req.query.lon,
-      maxDistance: req.query.maxDistance, // ✅ fix
+      lng: req.query.lng,
+      maxDistance: req.query.maxDistance,
       destLat: req.query.destLat,
       destLng: req.query.destLng,
       destMaxDistance: req.query.destMaxDistance,
       date: req.query.date,
+      from: req.query.from,
+      to: req.query.to,
+      passengers: req.query.passengers,
+      vehicleType: req.query.vehicleType,
+      sortBy: req.query.sortBy,
+      maxPrice: req.query.maxPrice,
     };
 
+    console.log("Search parameters received:", searchParams);
+
+    // Validate search parameters (permissive)
+    const validation = validateSearchParams(searchParams);
+    if (!validation.isValid) {
+      return res.status(400).send({ 
+        error: "Invalid search parameters", 
+        details: validation.errors
+      });
+    }
+
     const rides = await RideService.searchRides(searchParams);
-    res.status(200).send(rides);
+
+    // Always return a plain array for backward compatibility
+    return res.status(200).send(rides);
   } catch (err) {
     console.error("Error searching rides", err);
-    res.status(400).send({ error: err.message });
+    // Never expose stack; send readable message
+    res.status(400).send({ error: err.message || "Failed to search rides" });
+  }
+});
+
+// Suggestions/autocomplete
+router.get("/locations/suggest", async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) {
+      return res.status(200).send({ suggestions: [] });
+    }
+    const suggestions = getLocationSuggestions(q);
+    res.status(200).send({ suggestions });
+  } catch (err) {
+    console.error("Error getting location suggestions", err);
+    res.status(500).send({ error: err.message });
+  }
+});
+
+// Validate a location name
+router.get("/locations/validate", async (req, res) => {
+  try {
+    const { location } = req.query;
+    if (!location) {
+      return res.status(400).send({ error: "Location parameter is required" });
+    }
+    const validation = validateLocationName(location);
+    res.status(200).send(validation);
+  } catch (err) {
+    console.error("Error validating location", err);
+    res.status(500).send({ error: err.message });
   }
 });
 

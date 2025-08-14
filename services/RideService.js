@@ -2,36 +2,79 @@ const { string } = require("joi");
 const Ride = require("../models/Ride");
 const Vechile = require("../models/Vechile");
 const { VechileType } = require("../utils/enums");
+const { getCityCoordinates, validateCoordinates, areDefaultCoordinates } = require("../utils/locationUtils");
+const axios = require("axios");
+
+async function geocodeFreeTextLocation(name) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search`;
+    const params = {
+      q: name,
+      format: "json",
+      limit: 1,
+      addressdetails: 0,
+      countrycodes: "in",
+    };
+    const headers = {
+      "User-Agent": "CarPoolingBackendAPI/1.0 (contact: support@example.com)",
+    };
+    const { data } = await axios.get(url, { params, headers, timeout: 8000 });
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const first = data[0];
+    const lat = parseFloat(first.lat);
+    const lon = parseFloat(first.lon);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
+    return { lat, lng: lon };
+  } catch (err) {
+    console.warn("Geocoding failed for:", name, err?.message || err);
+    return null;
+  }
+}
 
 // services/RideService.js
 exports.createRide = async (driverId, rideData) => {
-  const validateLocation = (loc, fieldName) => {
-    if (
-      !loc ||
-      !loc.name ||
-      !loc.location ||
-      !Array.isArray(loc.location.coordinates)
-    ) {
-      throw new Error(`${fieldName} must include name and coordinates`);
+  const validateAndCorrectLocation = (loc, fieldName) => {
+    if (!loc || !loc.name) {
+      throw new Error(`${fieldName} must include a name`);
     }
+
+    // Check if coordinates are provided and valid
+    if (!loc.location || !Array.isArray(loc.location.coordinates)) {
+      throw new Error(`${fieldName} must include coordinates`);
+    }
+
     if (loc.location.coordinates.length !== 2) {
-      throw new Error(
-        `${fieldName} coordinates must have [longitude, latitude]`
-      );
+      throw new Error(`${fieldName} coordinates must have [longitude, latitude]`);
+    }
+
+    // Check if coordinates are default/wrong coordinates
+    if (areDefaultCoordinates(loc.location.coordinates) || !validateCoordinates(loc.location.coordinates)) {
+      console.log(`Warning: ${fieldName} coordinates appear to be incorrect for ${loc.name}`);
+      
+      // Try to get correct coordinates for the city
+      const correctCoords = getCityCoordinates(loc.name);
+      if (correctCoords) {
+        console.log(`Correcting ${fieldName} coordinates for ${loc.name} from [${loc.location.coordinates}] to [${correctCoords}]`);
+        loc.location.coordinates = correctCoords;
+      } else {
+        console.log(`Could not find coordinates for ${loc.name}, using provided coordinates`);
+      }
     }
   };
 
-  // Validate origin & destination
-  validateLocation(rideData.origin, "Origin");
-  validateLocation(rideData.destination, "Destination");
+  // Validate and correct origin & destination
+  validateAndCorrectLocation(rideData.origin, "Origin");
+  validateAndCorrectLocation(rideData.destination, "Destination");
 
   // Validate stops if present
   if (Array.isArray(rideData.stops)) {
     rideData.stops.forEach((stop, idx) =>
-      validateLocation(stop, `Stop ${idx + 1}`)
+      validateAndCorrectLocation(stop, `Stop ${idx + 1}`)
     );
   }
-  console.log(rideData);
+  
+  console.log("Final ride data after coordinate correction:", JSON.stringify(rideData, null, 2));
+  
   // Vehicle creation if ID not provided
   let vechileId = rideData.vechile;
   console.log(rideData.vechile);
@@ -157,25 +200,51 @@ exports.searchRides = async (searchParams) => {
   const {
     lat,
     lng,
-    maxDistance = 5000,
+    maxDistance = 20000, // meters default 20km
     destLat,
     destLng,
-    destMaxDistance = 5000,
+    destMaxDistance = 20000,
     date,
+    from, // free text origin
+    to,   // free text destination
+    passengers,
+    vehicleType,
+    maxPrice,
+    sortBy,
   } = searchParams;
 
   let originIds = [];
   let destinationIds = [];
+  let hasLocationSearch = false;
 
-  // STEP 1 — Find rides near origin
-  if (lat && lng) {
+  // STEP 1 — Origin by name -> DB name match; else geocode; else lat/lng
+  if (from) {
+    hasLocationSearch = true;
+    const originNameMatches = await Ride.find({
+      "origin.name": { $regex: from, $options: "i" },
+    }).select("_id");
+    originIds = originNameMatches.map((r) => r._id.toString());
+    if (originIds.length === 0) {
+      // geocode free text
+      const geo = await geocodeFreeTextLocation(from);
+      if (geo) {
+        const nearOrigin = await Ride.find({
+          "origin.location": {
+            $near: {
+              $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+              $maxDistance: parseInt(maxDistance),
+            },
+          },
+        }).select("_id");
+        originIds = nearOrigin.map((r) => r._id.toString());
+      }
+    }
+  } else if (lat && lng) {
+    hasLocationSearch = true;
     const originMatches = await Ride.find({
       "origin.location": {
         $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(lng), parseFloat(lat)],
-          },
+          $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
           $maxDistance: parseInt(maxDistance),
         },
       },
@@ -183,15 +252,34 @@ exports.searchRides = async (searchParams) => {
     originIds = originMatches.map((r) => r._id.toString());
   }
 
-  // STEP 2 — Find rides near destination
-  if (destLat && destLng) {
+  // STEP 2 — Destination
+  if (to) {
+    hasLocationSearch = true;
+    const destNameMatches = await Ride.find({
+      "destination.name": { $regex: to, $options: "i" },
+    }).select("_id");
+    destinationIds = destNameMatches.map((r) => r._id.toString());
+    console.log("Destination IDs found are : ", JSON.parse(JSON.stringify(destinationIds)));
+    if (destinationIds.length === 0) {
+      const geo = await geocodeFreeTextLocation(to);
+      if (geo) {
+        const nearDest = await Ride.find({
+          "destination.location": {
+            $near: {
+              $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+              $maxDistance: parseInt(destMaxDistance),
+            },
+          },
+        }).select("_id");
+        destinationIds = nearDest.map((r) => r._id.toString());
+      }
+    }
+  } else if (destLat && destLng) {
+    hasLocationSearch = true;
     const destMatches = await Ride.find({
       "destination.location": {
         $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(destLng), parseFloat(destLat)],
-          },
+          $geometry: { type: "Point", coordinates: [parseFloat(destLng), parseFloat(destLat)] },
           $maxDistance: parseInt(destMaxDistance),
         },
       },
@@ -199,95 +287,76 @@ exports.searchRides = async (searchParams) => {
     destinationIds = destMatches.map((r) => r._id.toString());
   }
 
-  // STEP 3 — Determine final matching IDs
+  // STEP 3 — Combine
   let finalIds = [];
   if (originIds.length && destinationIds.length) {
-    // Intersection of origin and destination results
     const originSet = new Set(originIds);
     finalIds = destinationIds.filter((id) => originSet.has(id));
+    console.log("Final IDs found are : ", JSON.parse(JSON.stringify(finalIds)));
   } else if (originIds.length) {
     finalIds = originIds;
   } else if (destinationIds.length) {
     finalIds = destinationIds;
+  } else if (hasLocationSearch) {
+    // No location results at all
+    return [];
   }
 
-  // STEP 4 — Build main query
+  // STEP 4 — Build query
   let query = {};
-  if (finalIds.length) {
+  if (finalIds.length > 0) {
     query._id = { $in: finalIds };
+    console.log("Query found are : ", JSON.parse(JSON.stringify(query)));
+  } else if (hasLocationSearch) {
+    return [];
   }
-
-  let start;
-  let end;
 
   // Date filter
   if (date) {
-    start = new Date(date);
-    end = new Date(date);
-    end.setHours(23, 59, 59, 999);
+    const start = new Date(date);
+    const end = new Date(date);
+    end.setDate(end.getDate() + 1);
     query.dateTime = { $gte: start, $lte: end };
+    console.log("Date filter found are : ", JSON.parse(JSON.stringify(query)));
   }
 
-  const result = await Ride.find(query);
-  console.log("Query", JSON.parse(JSON.stringify(result)));
-  // STEP 5 — Fetch rides with full details
-  const rides = await Ride.find(query)
-    .populate("vechile") // Populate vehicle details
-    .populate("driverId", "name email phone rating totalTrips verificationStatus"); // Populate driver details
+  // Passengers filter
+  if (passengers) {
+    query.availableSeats = { $gte: parseInt(passengers) };
+  }
 
+  // Max price filter
+  if (maxPrice !== undefined && maxPrice !== null && maxPrice !== "") {
+    const p = parseFloat(maxPrice);
+    if (!Number.isNaN(p)) {
+      query.pricePerSeat = { ...(query.pricePerSeat || {}), $lte: p };
+    }
+  }
 
-  console.log("Rides", JSON.parse(JSON.stringify(rides)));
-  console.log("Date from the frontend", date);
-  console.log("Fetching the results between the ", start, end);
-  
-  // Transform the data to match frontend expectations
-  const transformedRides = rides.map(ride => ({
-    id: ride._id,
-    driverId: ride.driverId,
-    vehicle: {
-      id: ride.vechile._id,
-      type: ride.vechile.type || "car",
-      make: ride.vechile.make || "Unknown",
-      model: ride.vechile.model || "Unknown",
-      year: ride.vechile.year || 2024,
-      color: ride.vechile.color || "Unknown",
-      licensePlate: ride.vechile.licensePlate || "Unknown",
-      features: ride.vechile.features || [],
-    },
-    driver: {
-      id: ride.driverId,
-      name: ride.driverId?.name || "Driver Name",
-      email: ride.driverId?.email || "driver@example.com",
-      phone: ride.driverId?.phone || "+1234567890",
-      rating: ride.driverId?.rating || 4.5,
-      totalTrips: ride.driverId?.totalTrips || 10,
-      verificationStatus: ride.driverId?.verificationStatus || "verified",
-    },
-    from: {
-      id: "loc1",
-      name: ride.origin.name,
-      address: ride.origin.name, // You might want to add address field to your schema
-      coordinates: ride.origin.location.coordinates,
-    },
-    to: {
-      id: "loc2",
-      name: ride.destination.name,
-      address: ride.destination.name, // You might want to add address field to your schema
-      coordinates: ride.destination.location.coordinates,
-    },
-    departureTime: ride.dateTime,
-    arrivalTime: ride.dateTime, // You might want to calculate this based on distance
-    availableSeats: ride.availableSeats,
-    pricePerSeat: ride.pricePerSeat,
-    description: `Ride from ${ride.origin.name} to ${ride.destination.name}`,
-    status: "active",
-    bookings: [],
-    createdAt: ride.dateTime,
-    route: {
-      distance: 0, // You might want to calculate this
-      duration: 0, // You might want to calculate this
-    },
-  }));
+  // Fetch
+  let rides = await Ride.find(query)
+    .populate("vechile")
+    .populate("driverId", "name email phone rating totalTrips verificationStatus");
+  console.log("Rides found are : ", JSON.parse(JSON.stringify(rides)));
+  console.log("Vehicle Type found are : ", JSON.parse(JSON.stringify(vehicleType)));
+  // Vehicle filter
+  if (vehicleType && vehicleType !== "all") {
+    rides = rides.filter(
+      (ride) => ride.vechile?.type && ride.vechile.type.toLowerCase() === vehicleType.toLowerCase()
+    );
+  }
 
-  return transformedRides;
+  // Sort
+  if (sortBy === "departure") {
+    rides.sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
+  } else if (sortBy === "price_asc") {
+    rides.sort((a, b) => (a.pricePerSeat || 0) - (b.pricePerSeat || 0));
+  } else if (sortBy === "price_desc") {
+    rides.sort((a, b) => (b.pricePerSeat || 0) - (a.pricePerSeat || 0));
+  }
+
+  // Transform
+  console.log("Rides found are : ", JSON.parse(JSON.stringify(rides)));
+
+  return rides;
 };
