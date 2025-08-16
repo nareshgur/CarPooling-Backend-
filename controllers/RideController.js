@@ -75,6 +75,7 @@ router.get("/bookings/my", auth, async (req, res) => {
   }
 });
 
+// Enhanced search endpoint
 router.get("/search", async (req, res) => {
   try {
     const searchParams = {
@@ -89,13 +90,15 @@ router.get("/search", async (req, res) => {
       to: req.query.to,
       passengers: req.query.passengers,
       vehicleType: req.query.vehicleType,
-      sortBy: req.query.sortBy,
+      sortBy: req.query.sortBy || 'relevance',
       maxPrice: req.query.maxPrice,
+      timeWindow: parseInt(req.query.timeWindow) || 2,
+      routeDeviation: parseInt(req.query.routeDeviation) || 10000,
+      enRouteMatching: req.query.enRouteMatching !== 'false',
     };
 
-    console.log("Search parameters received:", searchParams);
+    console.log("Enhanced search parameters received:", searchParams);
 
-    // Validate search parameters (permissive)
     const validation = validateSearchParams(searchParams);
     if (!validation.isValid) {
       return res.status(400).send({ 
@@ -106,12 +109,68 @@ router.get("/search", async (req, res) => {
 
     const rides = await RideService.searchRides(searchParams);
 
-    // Always return a plain array for backward compatibility
-    return res.status(200).send(rides);
+    // Add metadata to response
+    const response = {
+      rides,
+      metadata: {
+        totalResults: rides.length,
+        searchParams,
+        timestamp: new Date().toISOString(),
+        features: {
+          enRouteMatching: searchParams.enRouteMatching,
+          timeWindow: searchParams.timeWindow,
+          routeDeviation: searchParams.routeDeviation
+        }
+      }
+    };
+
+    return res.status(200).send(response);
   } catch (err) {
     console.error("Error searching rides", err);
-    // Never expose stack; send readable message
     res.status(400).send({ error: err.message || "Failed to search rides" });
+  }
+});
+
+// New endpoint for route suggestions
+router.get("/route-suggestions", async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to) {
+      return res.status(400).send({ error: "Both 'from' and 'to' parameters are required" });
+    }
+
+    // Get popular routes that match the pattern
+    const suggestions = await Ride.aggregate([
+      {
+        $match: {
+          $or: [
+            { "origin.name": { $regex: from, $options: "i" } },
+            { "destination.name": { $regex: to, $options: "i" } }
+          ]
+        }
+      },
+      {
+        $group: {
+          _id: {
+            origin: "$origin.name",
+            destination: "$destination.name"
+          },
+          count: { $sum: 1 },
+          avgPrice: { $avg: "$pricePerSeat" }
+        }
+      },
+      {
+        $sort: { count: -1 }
+      },
+      {
+        $limit: 10
+      }
+    ]);
+
+    res.status(200).send({ suggestions });
+  } catch (err) {
+    console.error("Error getting route suggestions", err);
+    res.status(500).send({ error: err.message });
   }
 });
 

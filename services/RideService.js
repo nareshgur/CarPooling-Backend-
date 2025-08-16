@@ -2,33 +2,41 @@ const { string } = require("joi");
 const Ride = require("../models/Ride");
 const Vechile = require("../models/Vechile");
 const { VechileType } = require("../utils/enums");
-const { getCityCoordinates, validateCoordinates, areDefaultCoordinates } = require("../utils/locationUtils");
+const { 
+  getCityCoordinates, 
+  validateCoordinates, 
+  areDefaultCoordinates,
+  calculateDistance,
+  getRouteFromOSRM,
+  calculateRouteSegments,
+  geocodeWithRouteSnapping,
+  geocodeFreeTextLocation  // Add this import
+} = require("../utils/locationUtils");
 const axios = require("axios");
+const CacheService = require('./CacheService');
 
-async function geocodeFreeTextLocation(name) {
-  try {
-    const url = `https://nominatim.openstreetmap.org/search`;
-    const params = {
-      q: name,
-      format: "json",
-      limit: 1,
-      addressdetails: 0,
-      countrycodes: "in",
-    };
-    const headers = {
-      "User-Agent": "CarPoolingBackendAPI/1.0 (contact: support@example.com)",
-    };
-    const { data } = await axios.get(url, { params, headers, timeout: 8000 });
-    if (!Array.isArray(data) || data.length === 0) return null;
-    const first = data[0];
-    const lat = parseFloat(first.lat);
-    const lon = parseFloat(first.lon);
-    if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
-    return { lat, lng: lon };
-  } catch (err) {
-    console.warn("Geocoding failed for:", name, err?.message || err);
-    return null;
-  }
+// Remove the geocodeFreeTextLocation function definition from here
+// async function geocodeFreeTextLocation(name) { ... }
+
+function findLocationMatches(searchTerm, locationField) {
+  const searchLower = searchTerm.toLowerCase();
+  
+  // Try exact match first
+  const exactMatches = Ride.find({
+    [locationField]: { $regex: `^${searchTerm}$`, $options: "i" }
+  });
+  
+  // Try contains match
+  const containsMatches = Ride.find({
+    [locationField]: { $regex: searchTerm, $options: "i" }
+  });
+  
+  // Try word boundary matches (for cases like "Vinayak Nagar" matching "Nizamabad")
+  const wordMatches = Ride.find({
+    [locationField]: { $regex: `\\b${searchTerm}\\b`, $options: "i" }
+  });
+  
+  return Promise.all([exactMatches, containsMatches, wordMatches]);
 }
 
 // services/RideService.js
@@ -197,6 +205,18 @@ exports.getRidesByDriver = async (driverId) => {
 };
 
 exports.searchRides = async (searchParams) => {
+  // Try to get from cache first
+  console.log("Search params received from the frontend/controller",searchParams)
+  const cacheKey = CacheService.generateSearchKey(searchParams);
+  const cached = await CacheService.get(cacheKey);
+  console.log("Cached Key is ",cached)
+  console.log("cached result is :",cached)
+  if (cached) {
+    console.log('Returning cached search results');
+    console.log(cached)
+    return cached;
+  }
+
   const {
     lat,
     lng,
@@ -211,121 +231,277 @@ exports.searchRides = async (searchParams) => {
     vehicleType,
     maxPrice,
     sortBy,
+    timeWindow = 2, // hours
+    routeDeviation = 10000, // meters
+    enRouteMatching = true,
   } = searchParams;
 
   let originIds = [];
   let destinationIds = [];
   let hasLocationSearch = false;
 
-  // STEP 1 — Origin by name -> DB name match; else geocode; else lat/lng
+  // STEP 1 — Enhanced Origin Search
   if (from) {
     hasLocationSearch = true;
+    
     const originNameMatches = await Ride.find({
-      "origin.name": { $regex: from, $options: "i" },
+      $or: [
+        { "origin.name": { $regex: from, $options: "i" } },
+        { "destination.name": { $regex: from, $options: "i" } },
+        { "stops.name": { $regex: from, $options: "i" } },
+        { "searchKeywords": { $regex: from, $options: "i" } }
+      ]
     }).select("_id");
     originIds = originNameMatches.map((r) => r._id.toString());
-    if (originIds.length === 0) {
-      // geocode free text
-      const geo = await geocodeFreeTextLocation(from);
+
+    console.log("origin names found are :",originNameMatches)
+    console.log("originIds found are :",originIds)
+    
+    // If en-route matching is enabled, also search for rides passing through the area
+    if (enRouteMatching && originIds.length === 0) {
+      const geo = await geocodeWithRouteSnapping(from);
       if (geo) {
-        const nearOrigin = await Ride.find({
-          "origin.location": {
-            $near: {
-              $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
-              $maxDistance: parseInt(maxDistance),
+
+        console.log("The Geo Found are :",geo)
+        // Split the geo queries into separate operations to avoid "Too many geoNear expressions" error
+        const nearOriginQueries = [
+          Ride.find({
+            "origin.location": {
+              $near: {
+                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                $maxDistance: parseInt(maxDistance),
+              },
             },
-          },
-        }).select("_id");
-        originIds = nearOrigin.map((r) => r._id.toString());
+          }).select("_id"),
+          Ride.find({
+            "destination.location": {
+              $near: {
+                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                $maxDistance: parseInt(maxDistance),
+              },
+            },
+          }).select("_id"),
+          Ride.find({
+            "stops.location": {
+              $near: {
+                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                $maxDistance: parseInt(maxDistance),
+              },
+            },
+          }).select("_id"),
+          Ride.find({
+            "routeBoundingBox": {
+              $geoIntersects: {
+                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] }
+              }
+            }
+          }).select("_id")
+        ];
+        
+        console.log("Origin Near Queries are",nearOriginQueries)
+        const nearOriginResults = await Promise.all(nearOriginQueries);
+        const allNearOriginIds = nearOriginResults.flatMap(results => 
+          results.map((r) => r._id.toString())
+        );
+
+        console.log("All near Origin Ids Found are ",allNearOriginIds)
+        // Remove duplicates
+        originIds = [...new Set(allNearOriginIds)];
+        console.log("Resultant Ids found are :",originIds)
       }
     }
   } else if (lat && lng) {
+    console.log("Entered the Origin Lat and Lng");
+    
     hasLocationSearch = true;
-    const originMatches = await Ride.find({
-      "origin.location": {
-        $near: {
-          $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
-          $maxDistance: parseInt(maxDistance),
+    // Split the geo queries for coordinates search as well
+    const originGeoQueries = [
+      Ride.find({
+        "origin.location": {
+          $near: {
+            $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
+            $maxDistance: parseInt(maxDistance),
+          },
         },
-      },
-    }).select("_id");
-    originIds = originMatches.map((r) => r._id.toString());
+      }).select("_id"),
+      Ride.find({
+        "routeBoundingBox": {
+          $geoIntersects: {
+            $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] }
+          }
+        }
+      }).select("_id")
+    ];
+
+
+    console.log("Origin Ids found are :",originIds)
+    
+    const originGeoResults = await Promise.all(originGeoQueries);
+    const allOriginGeoIds = originGeoResults.flatMap(results => 
+      results.map((r) => r._id.toString())
+    );
+    originIds = [...new Set(allOriginGeoIds)];
   }
 
-  // STEP 2 — Destination
+  // STEP 2 — Enhanced Destination Search
   if (to) {
     hasLocationSearch = true;
+    
     const destNameMatches = await Ride.find({
-      "destination.name": { $regex: to, $options: "i" },
+      $or: [
+        { "origin.name": { $regex: to, $options: "i" } },
+        { "destination.name": { $regex: to, $options: "i" } },
+        { "stops.name": { $regex: to, $options: "i" } },
+        { "searchKeywords": { $regex: to, $options: "i" } }
+      ]
     }).select("_id");
     destinationIds = destNameMatches.map((r) => r._id.toString());
-    console.log("Destination IDs found are : ", JSON.parse(JSON.stringify(destinationIds)));
-    if (destinationIds.length === 0) {
-      const geo = await geocodeFreeTextLocation(to);
+
+    console.log("destiName Matches Found are ",destNameMatches)
+    console.log("Destination Ids Found are :",destinationIds)
+    
+    if (enRouteMatching && destinationIds.length === 0) {
+      const geo = await geocodeWithRouteSnapping(to);
       if (geo) {
-        const nearDest = await Ride.find({
-          "destination.location": {
-            $near: {
-              $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
-              $maxDistance: parseInt(destMaxDistance),
+
+        console.log("Geo Destination Location From Frontend is ",geo)
+        // Split the geo queries for destination search as well
+        const nearDestQueries = [
+          Ride.find({
+            "origin.location": {
+              $near: {
+                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                $maxDistance: parseInt(destMaxDistance),
+              },
             },
-          },
-        }).select("_id");
-        destinationIds = nearDest.map((r) => r._id.toString());
+          }).select("_id"),
+          Ride.find({
+            "destination.location": {
+              $near: {
+                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                $maxDistance: parseInt(destMaxDistance),
+              },
+            },
+          }).select("_id"),
+          Ride.find({
+            "stops.location": {
+              $near: {
+                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                $maxDistance: parseInt(destMaxDistance),
+              },
+            },
+          }).select("_id"),
+          Ride.find({
+            "routeBoundingBox": {
+              $geoIntersects: {
+                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] }
+              }
+            }
+          }).select("_id")
+        ];
+        
+        const nearDestResults = await Promise.all(nearDestQueries);
+        const allNearDestIds = nearDestResults.flatMap(results => 
+          results.map((r) => r._id.toString())
+        );
+        destinationIds = [...new Set(allNearDestIds)];
+
+        console.log("Near Destination Results are ",nearDestResults)
+        console.log("Near Destination Ids Found are ",destinationIds)
       }
     }
   } else if (destLat && destLng) {
+
+    console.log("ENtered the Dest Lat and Dest Lng")
     hasLocationSearch = true;
-    const destMatches = await Ride.find({
-      "destination.location": {
-        $near: {
-          $geometry: { type: "Point", coordinates: [parseFloat(destLng), parseFloat(destLat)] },
-          $maxDistance: parseInt(destMaxDistance),
+    // Split the geo queries for destination coordinates search as well
+    const destGeoQueries = [
+      Ride.find({
+        "origin.location": {
+          $near: {
+            $geometry: { type: "Point", coordinates: [parseFloat(destLng), parseFloat(destLat)] },
+            $maxDistance: parseInt(destMaxDistance),
+          },
         },
-      },
-    }).select("_id");
-    destinationIds = destMatches.map((r) => r._id.toString());
+      }).select("_id"),
+      Ride.find({
+        "routeBoundingBox": {
+          $geoIntersects: {
+            $geometry: { type: "Point", coordinates: [parseFloat(destLng), parseFloat(destLat)] }
+          }
+        }
+      }).select("_id")
+    ];
+    
+    const destGeoResults = await Promise.all(destGeoQueries);
+    const allDestGeoIds = destGeoResults.flatMap(results => 
+      results.map((r) => r._id.toString())
+    );
+    destinationIds = [...new Set(allDestGeoIds)];
   }
 
-  // STEP 3 — Combine
+
+  console.log("origin Ids",originIds)
+  console.log("Destination Ids",destinationIds)
+  // STEP 3 — Combine Results
   let finalIds = [];
   if (originIds.length && destinationIds.length) {
     const originSet = new Set(originIds);
     finalIds = destinationIds.filter((id) => originSet.has(id));
-    console.log("Final IDs found are : ", JSON.parse(JSON.stringify(finalIds)));
   } else if (originIds.length) {
     finalIds = originIds;
   } else if (destinationIds.length) {
     finalIds = destinationIds;
   } else if (hasLocationSearch) {
-    // No location results at all
     return [];
   }
 
-  // STEP 4 — Build query
+
+  console.log("finals Ids are ",finalIds)
+  // STEP 4 — Build Query
   let query = {};
   if (finalIds.length > 0) {
     query._id = { $in: finalIds };
-    console.log("Query found are : ", JSON.parse(JSON.stringify(query)));
   } else if (hasLocationSearch) {
     return [];
   }
 
-  // Date filter
+  let rideWithEmpty = await Ride.find(query)
+  .populate("vechile")
+  .populate("driverId", "name email phone rating totalTrips verificationStatus");
+
+  console.log("Ride Details after applying Date filter",rideWithEmpty)
+
+
+  // Enhanced Date Filter with Time Window
   if (date) {
-    const start = new Date(date);
-    const end = new Date(date);
-    end.setDate(end.getDate() + 1);
-    query.dateTime = { $gte: start, $lte: end };
-    console.log("Date filter found are : ", JSON.parse(JSON.stringify(query)));
+    const searchDate = new Date(date);
+    const start = new Date(searchDate);
+    start.setUTCHours(0 , 0, 0, 0);
+    
+    const end = new Date(searchDate);
+    end.setUTCHours(23, 59, 59, 999);
+    
+    query.dateTime= { $gte: start, $lte: end };
   }
 
-  // Passengers filter
+  let rideDate = await Ride.find(query)
+  .populate("vechile")
+  .populate("driverId", "name email phone rating totalTrips verificationStatus");
+
+  console.log("Ride Details after applying Date filter",rideDate)
+
+  // Other filters
   if (passengers) {
     query.availableSeats = { $gte: parseInt(passengers) };
   }
 
-  // Max price filter
+  let ride = await Ride.find(query)
+    .populate("vechile")
+    .populate("driverId", "name email phone rating totalTrips verificationStatus");
+
+    console.log("Pre Rides Before Prices Constraints results ",ride)
+
   if (maxPrice !== undefined && maxPrice !== null && maxPrice !== "") {
     const p = parseFloat(maxPrice);
     if (!Number.isNaN(p)) {
@@ -333,12 +509,14 @@ exports.searchRides = async (searchParams) => {
     }
   }
 
-  // Fetch
+  // Fetch rides with enhanced population
   let rides = await Ride.find(query)
     .populate("vechile")
     .populate("driverId", "name email phone rating totalTrips verificationStatus");
-  console.log("Rides found are : ", JSON.parse(JSON.stringify(rides)));
-  console.log("Vehicle Type found are : ", JSON.parse(JSON.stringify(vehicleType)));
+
+
+    console.log("resultant rides after applying the Prices Constraints ",rides)
+
   // Vehicle filter
   if (vehicleType && vehicleType !== "all") {
     rides = rides.filter(
@@ -346,17 +524,59 @@ exports.searchRides = async (searchParams) => {
     );
   }
 
-  // Sort
-  if (sortBy === "departure") {
+  // Enhanced Scoring and Ranking
+  rides = rides.map(ride => {
+    let score = 0;
+    
+    // Route relevance score
+    if (from && to) {
+      const originMatch = ride.origin.name.toLowerCase().includes(from.toLowerCase()) ? 10 : 0;
+      const destMatch = ride.destination.name.toLowerCase().includes(to.toLowerCase()) ? 10 : 0;
+      score += originMatch + destMatch;
+    }
+    
+    // Driver rating score
+    if (ride.driverId?.rating) {
+      score += ride.driverId.rating * 2;
+    }
+    
+    // Seat availability score
+    score += Math.min(ride.availableSeats, 5);
+    
+    // Price competitiveness score
+    const avgPrice = 500; // You can calculate this dynamically
+    if (ride.pricePerSeat < avgPrice) {
+      score += 5;
+    }
+    
+    // Time proximity score
+    if (date) {
+      const timeDiff = Math.abs(new Date(date) - new Date(ride.dateTime));
+      const hoursDiff = timeDiff / (1000 * 60 * 60);
+      if (hoursDiff <= 1) score += 10;
+      else if (hoursDiff <= 2) score += 5;
+      else if (hoursDiff <= 4) score += 2;
+    }
+    
+    return { ...ride.toObject(), relevanceScore: score };
+  });
+
+  // Enhanced Sorting
+  if (sortBy === "relevance") {
+    rides.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  } else if (sortBy === "departure") {
     rides.sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
   } else if (sortBy === "price_asc") {
     rides.sort((a, b) => (a.pricePerSeat || 0) - (b.pricePerSeat || 0));
   } else if (sortBy === "price_desc") {
     rides.sort((a, b) => (b.pricePerSeat || 0) - (a.pricePerSeat || 0));
+  } else {
+    // Default: relevance score
+    rides.sort((a, b) => b.relevanceScore - a.relevanceScore);
   }
 
-  // Transform
-  console.log("Rides found are : ", JSON.parse(JSON.stringify(rides)));
-
+  // Cache the results for 5 minutes
+  await CacheService.set(cacheKey, rides, 300);
+  console.log(rides)
   return rides;
 };
