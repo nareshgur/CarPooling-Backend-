@@ -21,7 +21,7 @@ const Vechile = mongoose.model(
     plateNumber: {
       type: String,
       required: true,
-      unique: true,
+      // unique: true,
     },
     VechileType: {
       type: String,
