@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const Chat = require("../models/Chat");
+const ChatLog= require("../models/ChatLogSchema");
 const Notification = require("../models/Notification");
 const auth = require("../middleware/auth");
 
@@ -32,9 +32,9 @@ router.get("/ride/:rideId", auth, async (req, res) => {
 });
 
 // POST /api/chats/:chatId/message – send message (realtime)
-router.post("/:chatId/message", auth, async (req, res) => {
+router.post("/message", auth, async (req, res) => {
   try {
-    const { chatId } = req.params;
+    // const { chatId } = req.params;
     const { content, messageType = "text" } = req.body;
     const senderId = req.user._id;
 
@@ -185,5 +185,26 @@ router.get("/my", auth, async (req, res) => {
     res.status(500).send({ error: "Failed to fetch chats" });
   }
 });
+
+
+router.post("/initiate", async (req, res) => {
+  try {
+    const { rideId, senderId, receiverId, initiatedAt, timeStamp } = req.body;
+
+    const chat = new ChatLog({
+      rideId,
+     senderId,
+     receiverId,
+     initiatedAt,
+    });
+
+    await chat.save();
+
+    res.status(201).json({ message: "Chat initiation logged", chat });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 module.exports = router;
