@@ -13,4 +13,12 @@ const server = app.listen(port, () =>
   winston.info(`Listening on port ${port}...`)
 );
 
+const SocketService = require('./services/SocketService');
+
+// Initialize Socket.IO service
+const socketService = new SocketService(server);
+
+// Make socket service available globally
+global.socketService = socketService;
+
 module.exports = server;

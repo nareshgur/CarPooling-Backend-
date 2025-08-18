@@ -25,7 +25,7 @@ exports.registerUser = async (body) => {
 
   await user.save();
 
-  return { status: 200, data: "Registered successfully" };
+  return { status: 200, data:{message: "Registered successfully"} };
 };
 
 exports.loginUser = async ({ email, Password }) => {
@@ -44,5 +44,5 @@ exports.loginUser = async ({ email, Password }) => {
   );
 
 
-  return { status: 200, data: token  };
+  return { status: 200, message: "Login successful", data: {token}};
 };

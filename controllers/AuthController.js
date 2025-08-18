@@ -15,10 +15,11 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const result = await AuthService.loginUser(req.body);
+    console.log("The login method is called with result",JSON.stringify(result));  
     return res
       .header("x-auth-token", result.data)
       .status(result.status)
-      .send(result.data);
+      .send({message: result.message, data: result.data});
   } catch (err) {
     console.error("Error in login:", err);
     return res.status(500).send("Internal Server Error");

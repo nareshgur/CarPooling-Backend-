@@ -2,6 +2,9 @@ const express = require("express");
 const User = require("../controllers/AuthController");
 const Ride = require("../controllers/RideController");
 const Vechile = require("../controllers/VechileController");
+const Booking = require("../controllers/BookingController");
+const Chat = require("../controllers/ChatController");
+const Notification = require("../controllers/NotificationController");
 const app = express();
 const cors = require("cors");
 
@@ -10,7 +13,8 @@ module.exports = function (app) {
     cors({
       origin: "http://localhost:5173",
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization"],
+      allowedHeaders: ["Content-Type", "Authorization","x-auth-token"],
+      credentials: true,
     })
   );
   app.use(express.json());
@@ -18,4 +22,7 @@ module.exports = function (app) {
   app.use("/api/user", User);
   app.use("/api/Ride", Ride);
   app.use("/api/Vechile", Vechile);
+  app.use("/api/booking", Booking);
+  app.use("/api/chats", Chat);
+  app.use("/api/notification", Notification);
 };

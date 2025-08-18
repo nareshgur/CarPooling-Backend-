@@ -7,7 +7,7 @@ const { route } = require("./AuthController");
 const auth = require("../middleware/auth");
 const { validateSearchParams, getLocationSuggestions, validateLocationName } = require("../utils/locationValidator");
 
-router.post("/Ride", async (req, res) => {
+router.post("/Ride",auth, async (req, res) => {
   try {
     console.log("=== RIDE CREATION REQUEST ===");
     console.log("Request body:", JSON.stringify(req.body, null, 2));
@@ -25,7 +25,7 @@ router.post("/Ride", async (req, res) => {
     }
     
     const ride = await RideService.createRide(
-      "6898d10af6feb1bb10758dea",
+      req.user._id,
       req.body
     );
     res.status(201).send(ride);
