@@ -13,6 +13,8 @@ const server = app.listen(port, () =>
   winston.info(`Listening on port ${port}...`)
 );
 
+
+console.log(`Ther server started at PORT ${port}`)
 const SocketService = require('./services/SocketService');
 
 // Initialize Socket.IO service

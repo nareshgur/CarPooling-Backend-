@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const Chat = require("../models/Chat");
+const ChatLog = require("../models/ChatLog");
 const Notification = require("../models/Notification");
 const auth = require("../middleware/auth");
 
@@ -33,7 +33,10 @@ router.get("/ride/:rideId", auth, async (req, res) => {
 
 // POST /api/chats/:chatId/message – send message (realtime)
 router.post("/:chatId/message", auth, async (req, res) => {
+  
+  console.log("The message controller ",req.body)
   try {
+    
     const { chatId } = req.params;
     const { content, messageType = "text" } = req.body;
     const senderId = req.user._id;
@@ -183,6 +186,27 @@ router.get("/my", auth, async (req, res) => {
   } catch (err) {
     console.error("Error fetching user chats:", err);
     res.status(500).send({ error: "Failed to fetch chats" });
+  }
+});
+
+
+router.post("/initiate", async (req, res) => {
+  try {
+    const { rideId, senderId, receiverId, initiatedAt } = req.body;
+
+    const chat = new ChatLog({
+      rideId,
+      senderId,
+      receiverId,
+      initiatedAt,
+    });
+
+    await chat.save();
+
+    res.status(201).json({ message: "Chat initiation logged", chat });
+  } catch (error) {
+    console.error("Error saving chat:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 

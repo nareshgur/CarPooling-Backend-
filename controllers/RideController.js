@@ -15,13 +15,13 @@ router.post("/Ride",auth, async (req, res) => {
     // Log origin details
     if (req.body.origin) {
       console.log("Origin name:", req.body.origin.name);
-      console.log("Origin coordinates:", req.body.origin.location?.coordinates);
+      console.log("Origin coordinates:", req.body.origin?.coordinates);
     }
     
     // Log destination details
     if (req.body.destination) {
       console.log("Destination name:", req.body.destination.name);
-      console.log("Destination coordinates:", req.body.destination.location?.coordinates);
+      console.log("Destination coordinates:", req.body.destination?.coordinates);
     }
     
     const ride = await RideService.createRide(

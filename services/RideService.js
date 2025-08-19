@@ -41,35 +41,37 @@ function findLocationMatches(searchTerm, locationField) {
 
 // services/RideService.js
 exports.createRide = async (driverId, rideData) => {
+
+  console.log("The console log Ride Service ",driverId,rideData)
   const validateAndCorrectLocation = (loc, fieldName) => {
     if (!loc || !loc.name) {
       throw new Error(`${fieldName} must include a name`);
     }
-
-    // Check if coordinates are provided and valid
-    if (!loc.location || !Array.isArray(loc.location.coordinates)) {
+  
+    if (!Array.isArray(loc.coordinates)) {
       throw new Error(`${fieldName} must include coordinates`);
     }
-
-    if (loc.location.coordinates.length !== 2) {
+  
+    if (loc.coordinates.length !== 2) {
       throw new Error(`${fieldName} coordinates must have [longitude, latitude]`);
     }
-
-    // Check if coordinates are default/wrong coordinates
-    if (areDefaultCoordinates(loc.location.coordinates) || !validateCoordinates(loc.location.coordinates)) {
+  
+    // Correct if default/wrong
+    if (areDefaultCoordinates(loc.coordinates) || !validateCoordinates(loc.coordinates)) {
       console.log(`Warning: ${fieldName} coordinates appear to be incorrect for ${loc.name}`);
-      
-      // Try to get correct coordinates for the city
       const correctCoords = getCityCoordinates(loc.name);
       if (correctCoords) {
-        console.log(`Correcting ${fieldName} coordinates for ${loc.name} from [${loc.location.coordinates}] to [${correctCoords}]`);
-        loc.location.coordinates = correctCoords;
-      } else {
-        console.log(`Could not find coordinates for ${loc.name}, using provided coordinates`);
+        loc.coordinates = correctCoords;
       }
     }
+  
+    // ✅ always normalize to GeoJSON
+    loc.location = {
+      type: "Point",
+      coordinates: loc.coordinates,
+    };
   };
-
+  
   // Validate and correct origin & destination
   validateAndCorrectLocation(rideData.origin, "Origin");
   validateAndCorrectLocation(rideData.destination, "Destination");

@@ -3,7 +3,7 @@ const router = express.Router();
 const mongoose = require("mongoose");
 
 const Booking = require("../models/Booking");
-const Chat = require("../models/Chat");
+const Chat = require("../models/ChatLog");
 const Notification = require("../models/Notification");
 const Ride = require("../models/Ride");
 const User = require("../models/User");
