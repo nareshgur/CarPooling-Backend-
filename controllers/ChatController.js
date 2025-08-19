@@ -31,13 +31,16 @@ router.get("/ride/:rideId", auth, async (req, res) => {
   }
 });
 
-// POST /api/chats/:chatId/message – send message (realtime)
-router.post("/:chatId/message", auth, async (req, res) => {
+// // POST /api/chats/:chatId/message – send message (realtime)
+// router.post("/:chatId/message", auth, async (req, res) => {
   
-  console.log("The message controller ",req.body)
-  try {
+//   console.log("The message controller ",req.body)
+//   try {
     
-    const { chatId } = req.params;
+//     const { chatId } = req.params;
+router.post("/message", auth, async (req, res) => {
+  try {
+    // const { chatId } = req.params;
     const { content, messageType = "text" } = req.body;
     const senderId = req.user._id;
 
@@ -192,13 +195,20 @@ router.get("/my", auth, async (req, res) => {
 
 router.post("/initiate", async (req, res) => {
   try {
+    // const { rideId, senderId, receiverId, initiatedAt } = req.body;
+
+    // const chat = new ChatLog({
+    //   rideId,
+    //   senderId,
+    //   receiverId,
+    //   initiatedAt,
     const { rideId, senderId, receiverId, initiatedAt } = req.body;
 
     const chat = new ChatLog({
       rideId,
-      senderId,
-      receiverId,
-      initiatedAt,
+     senderId,
+     receiverId,
+     initiatedAt,
     });
 
     await chat.save();

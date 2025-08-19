@@ -204,4 +204,29 @@ router.get("/locations/validate", async (req, res) => {
   }
 });
 
+
+// rideController.js
+router.get('/ride/:rideId', async (req, res) => {
+  try {
+    const ride = await Ride.findById(req.params.id).populate("driver", "name phone");
+    if (!ride) {
+      return res.status(404).json({ message: "Ride not found" });
+    }
+
+    res.json({
+      rideId: ride._id,
+      origin: ride.origin,
+      destination: ride.destination,
+      departureTime: ride.departureTime,
+      driver: {
+        name: ride.driver.name,
+        phone: ride.driver.phone, // ensure driver phone is stored in DB
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+})
+
+
 module.exports = router;
