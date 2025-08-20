@@ -206,6 +206,16 @@ exports.getRidesByDriver = async (driverId) => {
     .sort({ dateTime: -1 }); // latest first
 };
 
+exports.getBookingsByUser = async (userId) => {
+  return await Booking.find({ userId })
+    .populate({
+      path: "rideId",
+      populate: { path: "vehicle driverId" } // populate ride details
+    })
+    .sort({ createdAt: -1 }); // latest first
+};
+
+
 exports.searchRides = async (searchParams) => {
   // Try to get from cache first
   console.log("Search params received from the frontend/controller",searchParams)

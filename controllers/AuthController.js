@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const AuthService = require("../services/AuthServices");
+const auth = require("../middleware/auth");
 
 router.post("/register", async (req, res) => {
   try {
@@ -23,6 +24,20 @@ router.post("/login", async (req, res) => {
   } catch (err) {
     console.error("Error in login:", err);
     return res.status(500).send("Internal Server Error");
+  }
+});
+
+router.put("/update",auth, async (req, res) => {
+  try {
+    // Assuming req.user._id comes from your auth middleware (JWT decoded)
+    const result = await AuthService.updateUser(req.user._id, req.body);
+
+    console.log("The update controller is called", result);
+
+    return res.status(result.status).json(result.data);
+  } catch (err) {
+    console.error("Update User Error:", err);
+    return res.status(500).json({ message: "Something went wrong while updating" });
   }
 });
 

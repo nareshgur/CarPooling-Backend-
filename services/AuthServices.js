@@ -46,3 +46,29 @@ exports.loginUser = async ({ email, Password }) => {
 
   return { status: 200, message: "Login successful", data: {token}};
 };
+
+exports.updateUser = async (userId, body) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user) return { status: 404, data: { message: "User not found" } };
+
+    // ✅ Only allow updating name & phone
+    if (body.name) user.name = body.name;
+    if (body.phone) user.phone = body.phone;
+
+    // ✅ Fix: lowercase "password"
+    if (body.password) {
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(body.password, salt);
+      user.password = hashedPassword;
+    }
+
+    await user.save();
+
+    const { password, ...userData } = user.toObject();
+    return { status: 200, data: { message: "User updated successfully", user: userData } };
+  } catch (err) {
+    console.error(err);
+    return { status: 500, data: { message: "Something went wrong" } };
+  }
+};

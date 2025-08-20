@@ -6,6 +6,7 @@ const { error } = require("winston");
 const { route } = require("./AuthController");
 const auth = require("../middleware/auth");
 const { validateSearchParams, getLocationSuggestions, validateLocationName } = require("../utils/locationValidator");
+const Vechile = require("../models/Vechile");
 
 router.post("/Ride",auth, async (req, res) => {
   try {
@@ -64,6 +65,13 @@ router.get("/my", auth, async (req, res) => {
     res.status(500).send({ error: err.message });
   }
 });
+
+
+// router.get("/Vechiles",async (req,res)=>{
+//   const vechiles = await Vechile.find({owner:{req.user._id}})
+
+  
+// })
 
 router.get("/bookings/my", auth, async (req, res) => {
   try {
