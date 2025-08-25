@@ -17,8 +17,11 @@ const server = app.listen(port, () =>
 console.log(`Ther server started at PORT ${port}`)
 const SocketService = require('./services/SocketService');
 
+
+
+
 // Initialize Socket.IO service
-const socketService = new SocketService(server);
+const socketService = new  SocketService(server);
 
 // Make socket service available globally
 global.socketService = socketService;

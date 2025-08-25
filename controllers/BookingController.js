@@ -7,8 +7,14 @@ const Chat = require("../models/ChatLog");
 const Notification = require("../models/Notification");
 const Ride = require("../models/Ride");
 const User = require("../models/User");
-
+const bookingController = require("../controllers/BookingController");
 const auth = require("../middleware/auth");
+const {
+  createBooking,
+  approveBooking,
+  // updateBooking,
+  rejectBooking,
+} = require("../services/BookingService");
 const { validateBookingRequest } = require("../utils/validatorUtils");
 
 // Utility: safe toString for ObjectId
@@ -17,119 +23,15 @@ const oid = (v) => (typeof v === "string" ? v : v?.toString());
 // POST /api/bookings  – create booking + (optional) first chat message
 router.post("/", auth, async (req, res) => {
   try {
-
-    console.log("The Book Creation is called",req.body)
-    const { rideId, message } = req.body;
+    console.log("The Params received from the Frontend to the backend is ",req.body)
+    const { rideId, driverId } = req.body;
     const passengerId = req.user._id;
-
-    // 1) Validate input (kept from your code)
-    const validation = validateBookingRequest(req.body);
-    if (!validation.isValid) {
-      return res.status(400).send({ error: validation.errors });
-    }
-
-    // 2) Check ride exists
-    const ride = await Ride.findById(rideId);
-    if (!ride) return res.status(404).send({ error: "Ride not found" });
-
-    // 3) Prevent duplicate active booking by the same passenger for same ride
-    const existingBooking = await Booking.findOne({
-      rideId,
-      passengerId,
-      status: { $in: ["Pending", "Approved"] },
-    });
-    if (existingBooking) {
-      return res
-        .status(400)
-        .send({ error: "You already have a booking for this ride" });
-    }
-
-    // 4) Create booking (seatsRequested = 1 by default; add to schema if you plan multiples)
-    const booking = await Booking.create({
-      rideId,
-      passengerId,
-      driverId: ride.driverId,
-      status: "Pending",
-      requestedAt: new Date(),
-    });
-
-    // 5) Ensure chat exists between passenger & driver for this ride
-    let chat = await Chat.findOne({
-      rideId,
-      participants: { $all: [passengerId, ride.driverId] },
-    });
-
-    if (!chat) {
-      chat = await Chat.create({
-        participants: [passengerId, ride.driverId],
-        rideId,
-        bookingId: booking._id,
-        messages: [],
-        lastMessage: new Date(),
-      });
-    }
-
-    // 6) Add initial message (optional)
-    if (message && message.trim()) {
-      const msg = {
-        senderId: passengerId,
-        receiverId: ride.driverId,
-        content: message.trim(),
-        messageType: "text",
-        timestamp: new Date(),
-        isRead: false,
-      };
-      chat.messages.push(msg);
-      chat.lastMessage = msg.timestamp;
-      await chat.save();
-
-      // realtime chat preview to both participants (ride room)
-      global.socketService?.sendToRide(oid(rideId), "newMessage", {
-        chatId: chat._id,
-        ...msg,
-      });
-    }
-
-    // 7) Notify driver (DB + realtime)
-    const notification = await Notification.create({
-      recipientId: ride.driverId,
-      senderId: passengerId,
-      type: "booking_request",
-      title: "New Booking Request",
-      message: `You have a new booking request for your ride from ${ride.origin?.name} to ${ride.destination?.name}`,
-      data: {
-        bookingId: booking._id,
-        rideId,
-        passengerId,
-      },
-    });
-
-    global.socketService?.sendToUser(oid(ride.driverId), "booking-request", {
-      _id: notification._id,
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      data: notification.data,
-      createdAt: notification.createdAt,
-    });
-
-    // 8) Response
-    res.status(201).send({
-      message: "Booking request sent successfully",
-      booking: {
-        id: booking._id,
-        status: booking.status,
-        requestedAt: booking.requestedAt,
-      },
-      chat: {
-        id: chat._id,
-        lastMessage: chat.lastMessage,
-      },
-      notification: { id: notification._id },
-    });
+    console.log('The booking controller is called ')
+    const booking = await createBooking({ rideId, driverId, passengerId });
+    res.status(201).json({ success: true, booking });
   } catch (err) {
-    console.error("Error creating booking:", err);
-    res.status(500).send({ error: "Failed to create booking request" });
+    console.log("Create Booking Error :", err);
+    res.status(500).json({ sucess: false, error: err.message });
   }
 });
 
@@ -160,89 +62,13 @@ router.get("/my", auth, async (req, res) => {
 });
 
 // PUT /api/bookings/:bookingId/status  – driver approves/rejects
-router.put("/:bookingId/status", auth, async (req, res) => {
+router.put("/:id/approve", auth, async (req, res) => {
   try {
-    const { status } = req.body; // 'Approved' | 'Rejected'
-    const { bookingId } = req.params;
-    const driverId = req.user._id;
-
-    if (!["Approved", "Rejected"].includes(status)) {
-      return res
-        .status(400)
-        .send({ error: "Invalid status. Must be 'Approved' or 'Rejected'" });
-    }
-
-    const booking = await Booking.findById(bookingId);
-    if (!booking) return res.status(404).send({ error: "Booking not found" });
-
-    if (oid(booking.driverId) !== oid(driverId)) {
-      return res
-        .status(403)
-        .send({ error: "You can only update your own ride bookings" });
-    }
-
-    if (booking.status !== "Pending") {
-      return res.status(400).send({ error: "Booking is no longer pending" });
-    }
-
-    // Update booking status (+ approvedAt)
-    booking.status = status;
-    if (status === "Approved") booking.approvedAt = new Date();
-    await booking.save();
-
-    // If approved, decrement available seats (assumes 1 seat; adapt if you add seatsRequested)
-    if (status === "Approved") {
-      const ride = await Ride.findById(booking.rideId);
-      if (!ride) return res.status(404).send({ error: "Ride not found" });
-      if (ride.availableSeats <= 0) {
-        // roll back booking status if no seats
-        booking.status = "Rejected";
-        booking.approvedAt = undefined;
-        await booking.save();
-        return res
-          .status(409)
-          .send({ error: "No seats available. Booking rejected." });
-      }
-      await Ride.findByIdAndUpdate(ride._id, { $inc: { availableSeats: -1 } });
-    }
-
-    // Notify passenger (DB + realtime)
-    const notification = await Notification.create({
-      recipientId: booking.passengerId,
-      senderId: driverId,
-      type: status === "Approved" ? "booking_approved" : "booking_rejected",
-      title: status === "Approved" ? "Booking Approved!" : "Booking Rejected",
-      message:
-        status === "Approved"
-          ? "Your booking request has been approved by the driver!"
-          : "Your booking request has been rejected by the driver.",
-      data: {
-        bookingId: booking._id,
-        rideId: booking.rideId,
-        status,
-      },
-    });
-
-    global.socketService?.sendToUser(
-      oid(booking.passengerId),
-      "booking-update",
-      {
-        _id: notification._id,
-        type: notification.type,
-        title: notification.title,
-        message: notification.message,
-        data: notification.data,
-        createdAt: notification.createdAt,
-      }
-    );
-
-    res.status(200).send({
-      message: `Booking ${status.toLowerCase()} successfully`,
-      booking,
-    });
+    const booking = await approveBooking(req.params.id, req.user._id);
+    res.json({ sucess: true, booking });
   } catch (err) {
-    console.error("Error updating booking status:", err);
-    res.status(500).send({ error: "Failed to update booking status" });
+    console.log("Approve Booking Error", err);
+    res.status(500).json({ success: false, error: err.message || "Server Error"});
   }
 });
 
@@ -270,6 +96,17 @@ router.get("/:bookingId", auth, async (req, res) => {
   } catch (err) {
     console.error("Error fetching booking details:", err);
     res.status(500).send({ error: "Failed to fetch booking details" });
+  }
+});
+
+router.put("/:id/reject",auth, async (req, res) => {
+  try {
+    console.log("The booking id received is ",req.params.id)
+    const booking = await rejectBooking(req.params.id,req.user._id)
+    return res.json({success:true,booking})
+  } catch (err) {
+    console.log("Reject Booking Error:",err)
+    res.status(500).json({sucess:false,error:err.message || "Server Error"})
   }
 });
 

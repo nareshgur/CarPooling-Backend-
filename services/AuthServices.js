@@ -44,7 +44,7 @@ exports.loginUser = async ({ email, Password }) => {
   );
 
 
-  return { status: 200, message: "Login successful", data: {token}};
+  return { status: 200, message: "Login successful", data: {token,user}};
 };
 
 exports.updateUser = async (userId, body) => {
