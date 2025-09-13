@@ -72,3 +72,17 @@ exports.updateUser = async (userId, body) => {
     return { status: 500, data: { message: "Something went wrong" } };
   }
 };
+
+
+exports.getUser = async (userId) => {
+  try {
+    const user = await User.findById(userId).select("-Password"); // exclude password
+    if (!user) {
+      return { status: 404, data: { message: "User not found" } };
+    }
+    return { status: 200, data: { user } };
+  } catch (err) {
+    console.error("Get User Error:", err);
+    return { status: 500, data: { message: "Something went wrong" } };
+  }
+};

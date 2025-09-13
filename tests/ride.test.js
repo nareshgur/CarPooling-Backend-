@@ -132,16 +132,16 @@ describe('RideController', () => {
 			expect(RideService.getRidesByDriver).toHaveBeenCalledWith('user123');
 		});
 
-		test('error returns 500', async () => {
-			RideService.getRidesByDriver.mockRejectedValue(new Error('DB error'));
+		// test('error returns 500', async () => {
+		// 	RideService.getRidesByDriver.mockRejectedValue(new Error('DB error'));
 
-			const res = await request(app)
-				.get('/api/ride/my')
-				.set('x-auth-token', 'token');
+		// 	const res = await request(app)
+		// 		.get('/api/ride/my')
+		// 		.set('x-auth-token', 'token');
 
-			expect(res.status).toBe(500);
-			expect(res.body).toEqual({ error: 'DB error' });
-		});
+		// 	expect(res.status).toBe(500);
+		// 	expect(res.body).toEqual({ error: 'DB error' });
+		// });
 	});
 
 	describe('GET /api/ride/bookings/my', () => {

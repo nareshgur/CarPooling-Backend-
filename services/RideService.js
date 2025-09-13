@@ -40,22 +40,23 @@ function findLocationMatches(searchTerm, locationField) {
 }
 
 // services/RideService.js
+// services/RideService.js
 exports.createRide = async (driverId, rideData) => {
+  console.log("The console log Ride Service ", driverId, rideData);
 
-  console.log("The console log Ride Service ",driverId,rideData)
   const validateAndCorrectLocation = (loc, fieldName) => {
     if (!loc || !loc.name) {
       throw new Error(`${fieldName} must include a name`);
     }
-  
+
     if (!Array.isArray(loc.coordinates)) {
       throw new Error(`${fieldName} must include coordinates`);
     }
-  
+
     if (loc.coordinates.length !== 2) {
       throw new Error(`${fieldName} coordinates must have [longitude, latitude]`);
     }
-  
+
     // Correct if default/wrong
     if (areDefaultCoordinates(loc.coordinates) || !validateCoordinates(loc.coordinates)) {
       console.log(`Warning: ${fieldName} coordinates appear to be incorrect for ${loc.name}`);
@@ -64,40 +65,52 @@ exports.createRide = async (driverId, rideData) => {
         loc.coordinates = correctCoords;
       }
     }
-  
+
     // ✅ always normalize to GeoJSON
     loc.location = {
       type: "Point",
       coordinates: loc.coordinates,
     };
   };
-  
+
   // Validate and correct origin & destination
   validateAndCorrectLocation(rideData.origin, "Origin");
   validateAndCorrectLocation(rideData.destination, "Destination");
 
+  console.log("Origin and destionation coordinates after validation and correction",rideData.origin,rideData.destination)
   // Validate stops if present
   if (Array.isArray(rideData.stops)) {
     rideData.stops.forEach((stop, idx) =>
       validateAndCorrectLocation(stop, `Stop ${idx + 1}`)
     );
   }
-  
+
   console.log("Final ride data after coordinate correction:", JSON.stringify(rideData, null, 2));
-  
-  // Vehicle creation if ID not provided
+
   let vechileId = rideData.vechile;
-  console.log(rideData.vechile);
+
   if (!vechileId && rideData.vechileInfo) {
-    const newVechile = new Vechile({
-      owner: driverId,
-      make: rideData.vechileInfo.make,
-      model: rideData.vechileInfo.model,
+    // 1. Check if a vehicle with same plateNumber already exists for this driver
+    let existingVehicle = await Vechile.findOne({
       plateNumber: rideData.vechileInfo.plateNumber,
-      VechileType: rideData.vechileInfo.VechileType,
+      owner: driverId
     });
-    await newVechile.save();
-    vechileId = newVechile._id;
+
+    if (existingVehicle) {
+      console.log("Reusing existing vehicle:", existingVehicle.plateNumber);
+      vechileId = existingVehicle._id;
+    } else {
+      // 2. Otherwise create a new one
+      const newVechile = new Vechile({
+        owner: driverId,
+        make: rideData.vechileInfo.make,
+        model: rideData.vechileInfo.model,
+        plateNumber: rideData.vechileInfo.plateNumber,
+        VechileType: rideData.vechileInfo.VechileType,
+      });
+      await newVechile.save();
+      vechileId = newVechile._id;
+    }
   }
 
   if (!vechileId) throw new Error("Vehicle information is required");
@@ -109,96 +122,98 @@ exports.createRide = async (driverId, rideData) => {
   });
 
   await ride.save();
+  console.log("Ride created successfully",ride)
   return ride;
 };
 
+
 // services/RideService.js
-exports.updateRideAndVehicle = async (driverId, rideId, updateData) => {
-  const ride = await Ride.findOne({ _id: rideId, driverId }).populate(
-    "vechile"
-  );
-  if (!ride) throw new Error("Ride not found or not owned by this driver");
+// exports.updateRideAndVehicle = async (driverId, rideId, updateData) => {
+//   const ride = await Ride.findOne({ _id: rideId, driverId }).populate(
+//     "vechile"
+//   );
+//   if (!ride) throw new Error("Ride not found or not owned by this driver");
 
-  const validateLocation = (loc, fieldName) => {
-    if (!loc) return; // skip if not provided
-    if (!loc.name) throw new Error(`${fieldName} must have a name`);
-    if (!loc.location || !Array.isArray(loc.location.coordinates)) {
-      throw new Error(`${fieldName} must have coordinates [lng, lat]`);
-    }
-    if (loc.location.coordinates.length !== 2) {
-      throw new Error(`${fieldName} coordinates must have exactly [lng, lat]`);
-    }
-  };
+//   const validateLocation = (loc, fieldName) => {
+//     if (!loc) return; // skip if not provided
+//     if (!loc.name) throw new Error(`${fieldName} must have a name`);
+//     if (!loc.location || !Array.isArray(loc.location.coordinates)) {
+//       throw new Error(`${fieldName} must have coordinates [lng, lat]`);
+//     }
+//     if (loc.location.coordinates.length !== 2) {
+//       throw new Error(`${fieldName} coordinates must have exactly [lng, lat]`);
+//     }
+//   };
 
-  // Merge + validate origin
-  if (updateData.origin) {
-    ride.origin = {
-      ...ride.origin?.toObject(),
-      ...updateData.origin,
-    };
-    validateLocation(ride.origin, "Origin");
-  }
+//   // Merge + validate origin
+//   if (updateData.origin) {
+//     ride.origin = {
+//       ...ride.origin?.toObject(),
+//       ...updateData.origin,
+//     };
+//     validateLocation(ride.origin, "Origin");
+//   }
 
-  // Merge + validate destination
-  if (updateData.destination) {
-    ride.destination = {
-      ...ride.destination?.toObject(),
-      ...updateData.destination,
-    };
-    validateLocation(ride.destination, "Destination");
-  }
+//   // Merge + validate destination
+//   if (updateData.destination) {
+//     ride.destination = {
+//       ...ride.destination?.toObject(),
+//       ...updateData.destination,
+//     };
+//     validateLocation(ride.destination, "Destination");
+//   }
 
-  // Merge + validate stops
-  if (updateData.stops) {
-    if (!Array.isArray(updateData.stops)) {
-      throw new Error("Stops must be an array");
-    }
-    ride.stops = updateData.stops.map((stop, idx) => {
-      const mergedStop = {
-        ...ride.stops?.[idx]?.toObject(),
-        ...stop,
-      };
-      validateLocation(mergedStop, `Stop ${idx + 1}`);
-      return mergedStop;
-    });
-  }
+//   // Merge + validate stops
+//   if (updateData.stops) {
+//     if (!Array.isArray(updateData.stops)) {
+//       throw new Error("Stops must be an array");
+//     }
+//     ride.stops = updateData.stops.map((stop, idx) => {
+//       const mergedStop = {
+//         ...ride.stops?.[idx]?.toObject(),
+//         ...stop,
+//       };
+//       validateLocation(mergedStop, `Stop ${idx + 1}`);
+//       return mergedStop;
+//     });
+//   }
 
-  // Update other ride fields
-  const allowedRideFields = ["dateTime", "availableSeats", "pricePerSeat"];
-  allowedRideFields.forEach((field) => {
-    if (updateData[field] !== undefined) {
-      ride[field] = updateData[field];
-    }
-  });
+//   // Update other ride fields
+//   const allowedRideFields = ["dateTime", "availableSeats", "pricePerSeat"];
+//   allowedRideFields.forEach((field) => {
+//     if (updateData[field] !== undefined) {
+//       ride[field] = updateData[field];
+//     }
+//   });
 
-  // Vehicle update logic
-  if (updateData.vechile && typeof updateData.vechile === "string") {
-    const existingVehicle = await Vechile.findOne({
-      _id: updateData.vechile,
-      owner: driverId,
-    });
-    if (!existingVehicle)
-      throw new Error("Vehicle not found or not owned by this driver");
-    ride.vechile = existingVehicle._id;
-  }
+//   // Vehicle update logic
+//   if (updateData.vechile && typeof updateData.vechile === "string") {
+//     const existingVehicle = await Vechile.findOne({
+//       _id: updateData.vechile,
+//       owner: driverId,
+//     });
+//     if (!existingVehicle)
+//       throw new Error("Vehicle not found or not owned by this driver");
+//     ride.vechile = existingVehicle._id;
+//   }
 
-  if (updateData.vechileInfo) {
-    if (ride.vechile) {
-      Object.assign(ride.vechile, updateData.vechileInfo);
-      await ride.vechile.save();
-    } else {
-      const newVehicle = new Vechile({
-        owner: driverId,
-        ...updateData.vechileInfo,
-      });
-      await newVehicle.save();
-      ride.vechile = newVehicle._id;
-    }
-  }
+//   if (updateData.vechileInfo) {
+//     if (ride.vechile) {
+//       Object.assign(ride.vechile, updateData.vechileInfo);
+//       await ride.vechile.save();
+//     } else {
+//       const newVehicle = new Vechile({
+//         owner: driverId,
+//         ...updateData.vechileInfo,
+//       });
+//       await newVehicle.save();
+//       ride.vechile = newVehicle._id;
+//     }
+//   }
 
-  await ride.save();
-  return { message: "Ride and vehicle updated successfully", ride };
-};
+//   await ride.save();
+//   return { message: "Ride and vehicle updated successfully", ride };
+// };
 
 exports.getRidesByDriver = async (driverId) => {
   return await Ride.find({ driverId })
@@ -206,14 +221,14 @@ exports.getRidesByDriver = async (driverId) => {
     .sort({ dateTime: -1 }); // latest first
 };
 
-exports.getBookingsByUser = async (userId) => {
-  return await Booking.find({ userId })
-    .populate({
-      path: "rideId",
-      populate: { path: "vehicle driverId" } // populate ride details
-    })
-    .sort({ createdAt: -1 }); // latest first
-};
+// exports.getBookingsByUser = async (userId) => {
+//   return await Booking.find({ userId })
+//     .populate({
+//       path: "rideId",
+//       populate: { path: "vehicle driverId" } // populate ride details
+//     })
+//     .sort({ createdAt: -1 }); // latest first
+// };
 
 
 exports.searchRides = async (searchParams) => {
@@ -230,6 +245,8 @@ exports.searchRides = async (searchParams) => {
   }
 
   const {
+    page,
+    limit,
     lat,
     lng,
     maxDistance = 20000, // meters default 20km
@@ -276,45 +293,45 @@ exports.searchRides = async (searchParams) => {
 
         console.log("The Geo Found are :",geo)
         // Split the geo queries into separate operations to avoid "Too many geoNear expressions" error
-        const nearOriginQueries = [
-          Ride.find({
-            "origin.location": {
-              $near: {
-                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
-                $maxDistance: parseInt(maxDistance),
+          const nearOriginQueries = [
+            Ride.find({
+              "origin.location": {
+                $near: {
+                  $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                  $maxDistance: parseInt(maxDistance),
+                },
               },
-            },
-          }).select("_id"),
-          Ride.find({
-            "destination.location": {
-              $near: {
-                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
-                $maxDistance: parseInt(maxDistance),
+            }).select("_id"),
+            Ride.find({
+              "destination.location": {
+                $near: {
+                  $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                  $maxDistance: parseInt(maxDistance),
+                },
               },
-            },
-          }).select("_id"),
-          Ride.find({
-            "stops.location": {
-              $near: {
-                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
-                $maxDistance: parseInt(maxDistance),
+            }).select("_id"),
+            Ride.find({
+              "stops.location": {
+                $near: {
+                  $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] },
+                  $maxDistance: parseInt(maxDistance),
+                },
               },
-            },
-          }).select("_id"),
-          Ride.find({
-            "routeBoundingBox": {
-              $geoIntersects: {
-                $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] }
+            }).select("_id"),
+            Ride.find({
+              "routeBoundingBox": {
+                $geoIntersects: {
+                  $geometry: { type: "Point", coordinates: [geo.lng, geo.lat] }
+                }
               }
-            }
-          }).select("_id")
-        ];
-        
-        console.log("Origin Near Queries are",nearOriginQueries)
-        const nearOriginResults = await Promise.all(nearOriginQueries);
-        const allNearOriginIds = nearOriginResults.flatMap(results => 
-          results.map((r) => r._id.toString())
-        );
+            }).select("_id")
+          ];
+          
+          console.log("Origin Near Queries are",nearOriginQueries)
+          const nearOriginResults = await Promise.all(nearOriginQueries);
+          const allNearOriginIds = nearOriginResults.flatMap(results => 
+            results.map((r) => r._id.toString())
+          );
 
         console.log("All near Origin Ids Found are ",allNearOriginIds)
         // Remove duplicates
@@ -514,12 +531,12 @@ exports.searchRides = async (searchParams) => {
 
     console.log("Pre Rides Before Prices Constraints results ",ride)
 
-  if (maxPrice !== undefined && maxPrice !== null && maxPrice !== "") {
-    const p = parseFloat(maxPrice);
-    if (!Number.isNaN(p)) {
-      query.pricePerSeat = { ...(query.pricePerSeat || {}), $lte: p };
-    }
-  }
+  // if (maxPrice !== undefined && maxPrice !== null && maxPrice !== "") {
+  //   const p = parseFloat(maxPrice);
+  //   if (!Number.isNaN(p)) {
+  //     query.pricePerSeat = { ...(query.pricePerSeat || {}), $lte: p };
+  //   }
+  // }
 
   // Fetch rides with enhanced population
   let rides = await Ride.find(query)
@@ -529,66 +546,33 @@ exports.searchRides = async (searchParams) => {
 
     console.log("resultant rides after applying the Prices Constraints ",rides)
 
-  // Vehicle filter
-  if (vehicleType && vehicleType !== "all") {
-    rides = rides.filter(
-      (ride) => ride.vechile?.type && ride.vechile.type.toLowerCase() === vehicleType.toLowerCase()
-    );
-  }
+ 
 
-  // Enhanced Scoring and Ranking
-  rides = rides.map(ride => {
-    let score = 0;
-    
-    // Route relevance score
-    if (from && to) {
-      const originMatch = ride.origin.name.toLowerCase().includes(from.toLowerCase()) ? 10 : 0;
-      const destMatch = ride.destination.name.toLowerCase().includes(to.toLowerCase()) ? 10 : 0;
-      score += originMatch + destMatch;
-    }
-    
-    // Driver rating score
-    if (ride.driverId?.rating) {
-      score += ride.driverId.rating * 2;
-    }
-    
-    // Seat availability score
-    score += Math.min(ride.availableSeats, 5);
-    
-    // Price competitiveness score
-    const avgPrice = 500; // You can calculate this dynamically
-    if (ride.pricePerSeat < avgPrice) {
-      score += 5;
-    }
-    
-    // Time proximity score
-    if (date) {
-      const timeDiff = Math.abs(new Date(date) - new Date(ride.dateTime));
-      const hoursDiff = timeDiff / (1000 * 60 * 60);
-      if (hoursDiff <= 1) score += 10;
-      else if (hoursDiff <= 2) score += 5;
-      else if (hoursDiff <= 4) score += 2;
-    }
-    
-    return { ...ride.toObject(), relevanceScore: score };
-  });
+  let paginatedRides = rides;
+  if(page && limit){
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 10;
+    const start = (page-1) * limitNum;
+    const end = start + limitNum;
+    paginatedRides = rides.slice(start,end);
 
-  // Enhanced Sorting
-  if (sortBy === "relevance") {
-    rides.sort((a, b) => b.relevanceScore - a.relevanceScore);
-  } else if (sortBy === "departure") {
-    rides.sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime));
-  } else if (sortBy === "price_asc") {
-    rides.sort((a, b) => (a.pricePerSeat || 0) - (b.pricePerSeat || 0));
-  } else if (sortBy === "price_desc") {
-    rides.sort((a, b) => (b.pricePerSeat || 0) - (a.pricePerSeat || 0));
-  } else {
-    // Default: relevance score
-    rides.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    console.log("The start and end ",start,end)
+    console.log("The paginated Results ",paginatedRides.length  )
+
+    return {
+      rides:paginatedRides,
+      pagination:{
+        totalResults : rides.length,
+        currentPage:pageNum,
+        pageSize:limitNum
+      }
+    };
   }
 
   // Cache the results for 5 minutes
   await CacheService.set(cacheKey, rides, 300);
+  // console.log("The paginated results are ",page,limit)
   console.log(rides)
   return rides;
 };

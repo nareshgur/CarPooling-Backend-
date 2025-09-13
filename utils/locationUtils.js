@@ -224,20 +224,20 @@ function areDefaultCoordinates(coordinates) {
 // Add these new functions at the end of the file
 
 // Calculate distance between two points using Haversine formula
-function calculateDistance(coord1, coord2) {
-  const R = 6371e3; // Earth's radius in meters
-  const φ1 = coord1[1] * Math.PI / 180;
-  const φ2 = coord2[1] * Math.PI / 180;
-  const Δφ = (coord2[1] - coord1[1]) * Math.PI / 180;
-  const Δλ = (coord2[0] - coord1[0]) * Math.PI / 180;
+// function calculateDistance(coord1, coord2) {
+//   const R = 6371e3; // Earth's radius in meters
+//   const φ1 = coord1[1] * Math.PI / 180;
+//   const φ2 = coord2[1] * Math.PI / 180;
+//   const Δφ = (coord2[1] - coord1[1]) * Math.PI / 180;
+//   const Δλ = (coord2[0] - coord1[0]) * Math.PI / 180;
 
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+//   const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+//             Math.cos(φ1) * Math.cos(φ2) *
+//             Math.sin(Δλ/2) * Math.sin(Δλ/2);
+//   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
-  return R * c;
-}
+//   return R * c;
+// }
 
 // Get route from OSRM API
 async function getRouteFromOSRM(waypoints) {
@@ -264,47 +264,47 @@ async function getRouteFromOSRM(waypoints) {
   }
 }
 
-// Check if a point is within a polygon (for bounding box checks)
-function isPointInPolygon(point, polygon) {
-  const x = point[0], y = point[1];
-  let inside = false;
+// // Check if a point is within a polygon (for bounding box checks)
+// function isPointInPolygon(point, polygon) {
+//   const x = point[0], y = point[1];
+//   let inside = false;
   
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i][0], yi = polygon[i][1];
-    const xj = polygon[j][0], yj = polygon[j][1];
+//   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+//     const xi = polygon[i][0], yi = polygon[i][1];
+//     const xj = polygon[j][0], yj = polygon[j][1];
     
-    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
-      inside = !inside;
-    }
-  }
+//     if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+//       inside = !inside;
+//     }
+//   }
   
-  return inside;
-}
+//   return inside;
+// }
 
-// Calculate route segments for en-route matching
-function calculateRouteSegments(origin, destination, stops = []) {
-  const waypoints = [origin.location.coordinates];
-  if (stops.length > 0) {
-    waypoints.push(...stops.map(stop => stop.location.coordinates));
-  }
-  waypoints.push(destination.location.coordinates);
+// // Calculate route segments for en-route matching
+// function calculateRouteSegments(origin, destination, stops = []) {
+//   const waypoints = [origin.location.coordinates];
+//   if (stops.length > 0) {
+//     waypoints.push(...stops.map(stop => stop.location.coordinates));
+//   }
+//   waypoints.push(destination.location.coordinates);
   
-  const segments = [];
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    const start = waypoints[i];
-    const end = waypoints[i + 1];
-    const distance = calculateDistance(start, end);
+//   const segments = [];
+//   for (let i = 0; i < waypoints.length - 1; i++) {
+//     const start = waypoints[i];
+//     const end = waypoints[i + 1];
+//     const distance = calculateDistance(start, end);
     
-    segments.push({
-      startLocation: i === 0 ? origin : stops[i - 1],
-      endLocation: i === waypoints.length - 2 ? destination : stops[i],
-      distance,
-      routeIndex: i
-    });
-  }
+//     segments.push({
+//       startLocation: i === 0 ? origin : stops[i - 1],
+//       endLocation: i === waypoints.length - 2 ? destination : stops[i],
+//       distance,
+//       routeIndex: i
+//     });
+//   }
   
-  return segments;
-}
+//   return segments;
+// }
 
 // Add this function before the geocodeWithRouteSnapping function
 async function geocodeFreeTextLocation(name) {
@@ -341,6 +341,7 @@ async function geocodeWithRouteSnapping(locationName, contextLocation = null) {
   
   // If we have a context location, try to snap to the nearest road
   if (contextLocation) {
+    console.log("Entered the context Location block",contextLocation)
     try {
       const url = `https://router.project-osrm.org/nearest/v1/driving/${basicGeocode.lng},${basicGeocode.lat}`;
       const response = await axios.get(url, { timeout: 5000 });
@@ -362,10 +363,10 @@ module.exports = {
   getCityCoordinates,
   validateCoordinates,
   areDefaultCoordinates,
-  calculateDistance,
+  // calculateDistance,
   getRouteFromOSRM,
-  isPointInPolygon,
-  calculateRouteSegments,
+  // isPointInPolygon,
+  // calculateRouteSegments,
   geocodeWithRouteSnapping,
   geocodeFreeTextLocation  // Add this export
 };

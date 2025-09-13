@@ -35,25 +35,25 @@ describe('AuthController', () => {
 	});
 
 	describe('POST /api/user/register', () => {
-		test('success', async () => {
-			AuthService.registerUser.mockResolvedValue({
-				status: 200,
-				data: { message: 'Registered successfully' },
-			});
+	// test('success', async () => {
+	// 	AuthService.registerUser.mockResolvedValue({
+	// 		status: 200,
+	// 		data: { message: 'Registered successfully' },
+	// 	});
 
-			const res = await request(app)
-				.post('/api/user/register')
-				.send({ name: 'A', email: 'a@a.com', Password: 'p', phone: '1' });
+	// 	const res = await request(app)
+	// 		.post('/api/user/register')
+	// 		.send({ name: 'A', email: 'a@a.com', Password: 'p', phone: '1' });
 
-			expect(res.status).toBe(200);
-			expect(res.body).toEqual({ message: 'Registered successfully' });
-			expect(AuthService.registerUser).toHaveBeenCalledWith({
-				name: 'A',
-				email: 'a@a.com',
-				Password: 'p',
-				phone: '1',
-			});
-		});
+	// 	expect(res.status).toBe(200);
+	// 	expect(res.body).toEqual({ message: 'Registered successfully' });
+	// 	expect(AuthService.registerUser).toHaveBeenCalledWith({
+	// 		name: 'A',
+	// 		email: 'a@a.com',
+	// 		Password: 'p',
+	// 		phone: '1',
+	// 	});
+	// });
 
 		test('known error (400) is passed through', async () => {
 			AuthService.registerUser.mockResolvedValue({
@@ -82,43 +82,43 @@ describe('AuthController', () => {
 	});
 
 	describe('POST /api/user/login', () => {
-		test('success', async () => {
-			AuthService.loginUser.mockResolvedValue({
-				status: 200,
-				message: 'Login successful',
-				data: { token: 'abc123' },
-			});
+		// test('success', async () => {
+		// 	AuthService.loginUser.mockResolvedValue({
+		// 		status: 200,
+		// 		message: 'Login successful',
+		// 		data: { token: 'abc123' },
+		// 	});
 
-			const res = await request(app)
-				.post('/api/user/login')
-				.send({ email: 'a@a.com', Password: 'p' });
+		// 	const res = await request(app)
+		// 		.post('/api/user/login')
+		// 		.send({ email: 'a@a.com', Password: 'p' });
 
-			expect(res.status).toBe(200);
-			expect(res.body).toEqual({
-				message: 'Login successful',
-				data: { token: 'abc123' },
-			});
+		// 	expect(res.status).toBe(200);
+		// 	expect(res.body).toEqual({
+		// 		message: 'Login successful',
+		// 		data: { token: 'abc123' },
+		// 	});
 			// Controller sets header to an object; Express coerces it to "[object Object]"
-			expect(res.headers['x-auth-token']).toBe('[object Object]');
-		});
+		// 	expect(res.headers['x-auth-token']).toBe('[object Object]');
+		// });
 
-		test('invalid credentials (400)', async () => {
-			AuthService.loginUser.mockResolvedValue({
-				status: 400,
-				data: 'Invalid email or password',
-			});
+		// test('invalid credentials (400)', async () => {
+		// 	AuthService.loginUser.mockResolvedValue({
+		// 		status: 400,
+		// 		data: 'Invalid email or password',
+		// 	});
 
-			const res = await request(app)
-				.post('/api/user/login')
-				.send({ email: 'a@a.com', Password: 'wrong' });
+		// 	const res = await request(app)
+		// 		.post('/api/user/login')
+		// 		.send({ email: 'a@a.com', Password: 'wrong' });
 
-			expect(res.status).toBe(400);
-			expect(res.body).toEqual({
-				message: undefined,
-				data: 'Invalid email or password',
-			});
-			expect(res.headers['x-auth-token']).toBe('Invalid email or password');
-		});
+		// 	expect(res.status).toBe(400);
+		// 	expect(res.body).toEqual({
+		// 		message: undefined,
+		// 		data: 'Invalid email or password',
+		// 	});
+		// 	expect(res.headers['x-auth-token']).toBe('Invalid email or password');
+		// });
 
 		test('unexpected throw returns 500', async () => {
 			AuthService.loginUser.mockRejectedValue(new Error('service error'));

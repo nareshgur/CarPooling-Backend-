@@ -18,7 +18,7 @@ router.post("/login", async (req, res) => {
     const result = await AuthService.loginUser(req.body);
     console.log("The login method is called with result",JSON.stringify(result));  
     return res
-      .header("x-auth-token", result.data)
+      .header("x-auth-token", result.data.token)
       .status(result.status)
       .send({message: result.message, data: result.data});
   } catch (err) {
@@ -40,5 +40,18 @@ router.put("/update",auth, async (req, res) => {
     return res.status(500).json({ message: "Something went wrong while updating" });
   }
 });
+
+
+router.get("/profile", auth, async (req, res) => {
+  try {
+    // `req.user._id` comes from JWT decoded by your auth middleware
+    const result = await AuthService.getUser(req.user._id);
+    return res.status(result.status).json(result.data);
+  } catch (err) {
+    console.error("Get Profile Error:", err);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
 
 module.exports = router;

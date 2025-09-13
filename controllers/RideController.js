@@ -13,13 +13,11 @@ router.post("/Ride",auth, async (req, res) => {
     console.log("=== RIDE CREATION REQUEST ===");
     console.log("Request body:", JSON.stringify(req.body, null, 2));
     
-    // Log origin details
     if (req.body.origin) {
       console.log("Origin name:", req.body.origin.name);
       console.log("Origin coordinates:", req.body.origin?.coordinates);
     }
     
-    // Log destination details
     if (req.body.destination) {
       console.log("Destination name:", req.body.destination.name);
       console.log("Destination coordinates:", req.body.destination?.coordinates);
@@ -85,6 +83,7 @@ router.get("/bookings/my", auth, async (req, res) => {
 
 // Enhanced search endpoint
 router.get("/search", async (req, res) => {
+  console.log('The request body is ',req.body)
   try {
     const searchParams = {
       lat: req.query.lat,
@@ -103,8 +102,13 @@ router.get("/search", async (req, res) => {
       timeWindow: parseInt(req.query.timeWindow) || 2,
       routeDeviation: parseInt(req.query.routeDeviation) || 10000,
       enRouteMatching: req.query.enRouteMatching !== 'false',
+
+
+      page:req.query.page,
+      limit:req.query.limit
     };
 
+    
     console.log("Enhanced search parameters received:", searchParams);
 
     const validation = validateSearchParams(searchParams);

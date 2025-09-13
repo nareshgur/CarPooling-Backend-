@@ -53,6 +53,9 @@ router.post("/", async (req, res) => {
       }
     );
 
+    console.log("The routes that we fetched orsRes.data",orsRes.data);
+
+    console.log("The json format of the orsRes.data",JSON.stringify(orsRes.data,null,2));
     res.json(orsRes.data);
   } catch (err) {
     const status = err.response?.status || 500;
